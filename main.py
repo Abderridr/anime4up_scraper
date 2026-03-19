@@ -35,23 +35,17 @@ class Anime4upScraper:
         episodes = []
         
         # More robust search for episode cards
-        # Looking for the structure found in the markdown
         for card in soup.find_all(['div', 'article']):
-            # Find the episode link (usually contains /episode/)
             ep_link = card.find('a', href=re.compile(r'/episode/'))
-            # Find the anime title link (usually inside an h3 or contains /anime/)
             anime_link = card.find('a', href=re.compile(r'/anime/'))
             
             if ep_link and anime_link:
                 ep_title = ep_link.text.strip()
                 anime_title = anime_link.text.strip()
                 ep_url = ep_link['href']
-                
-                # Combine them for the full title
                 full_title = f"{anime_title} {ep_title}"
                 episodes.append({'title': full_title, 'url': ep_url})
         
-        # Fallback: if the above fails, just grab all episode links
         if not episodes:
             for a in soup.find_all('a', href=re.compile(r'/episode/')):
                 title = a.text.strip()
@@ -77,16 +71,41 @@ class Anime4upScraper:
         response = self._get_with_scraperapi(episode_url, render=True)
         if not response or response.status_code != 200: return None
         soup = BeautifulSoup(response.text, 'html.parser')
-        data = {'watch_servers': [li.text.strip() for li in soup.find_all('li') if 'server' in li.get('class', []) or 'watch' in li.text.lower()], 'download_links': []}
-        for a in soup.find_all('a', href=True):
-            href = a['href']
-            if any(d in href.lower() for d in ['mega.nz', 'mediafire', 'gofile', 'workupload', 'mp4upload']):
-                q = "Unknown"
-                pt = a.find_parent().text.lower() if a.find_parent() else ""
-                if '1080' in pt or 'fhd' in pt: q = "1080p"
-                elif '720' in pt or 'hd' in pt: q = "720p"
-                elif '480' in pt or 'sd' in pt: q = "480p"
-                data['download_links'].append({'quality': q, 'host': a.text.strip()[:20], 'url': href})
+        data = {'watch_servers': [], 'download_links': []}
+        
+        # Improved table parsing for Anime4up
+        table = soup.find('table')
+        if table:
+            rows = table.find_all('tr')
+            for row in rows[1:]: # Skip header
+                cols = row.find_all('td')
+                if len(cols) >= 3:
+                    link_tag = cols[0].find('a', href=True)
+                    server_name = cols[1].text.strip()
+                    quality = cols[2].text.strip()
+                    
+                    if link_tag:
+                        href = link_tag['href']
+                        data['download_links'].append({
+                            'quality': quality,
+                            'host': server_name,
+                            'url': href
+                        })
+                        if server_name not in data['watch_servers']:
+                            data['watch_servers'].append(server_name)
+        
+        # Fallback for download links if table parsing fails
+        if not data['download_links']:
+            for a in soup.find_all('a', href=True):
+                href = a['href']
+                if any(d in href.lower() for d in ['mega.nz', 'mediafire', 'gofile', 'workupload', 'mp4upload']):
+                    q = "Unknown"
+                    pt = a.find_parent().text.lower() if a.find_parent() else ""
+                    if '1080' in pt or 'fhd' in pt: q = "1080p"
+                    elif '720' in pt or 'hd' in pt: q = "720p"
+                    elif '480' in pt or 'sd' in pt: q = "480p"
+                    data['download_links'].append({'quality': q, 'host': a.text.strip()[:20], 'url': href})
+                    
         return data
 
 scraper = Anime4upScraper()
@@ -100,11 +119,9 @@ def recent_episodes():
     latest = scraper.get_latest_episodes()
     results = []
     for ep in latest:
-        # Improved parsing for title and episode number
         match = re.search(r'(.*?)\s+(الحلقة|الأوفا)\s+(\d+)', ep['title'])
         if match:
             title = match.group(1).strip()
-            type_str = match.group(2)
             num = match.group(3)
         else:
             title = ep['title']
@@ -128,9 +145,23 @@ def anime_info():
 @app.route('/anime/anime4up/watch')
 def watch_episode():
     episode_id = unquote(request.args.get('episodeId', ''))
-    data = scraper.get_episode_data(f"https://w1.anime4up.rest/episode/{episode_id}/")
-    if not data: return jsonify({'error': 'Not found'}), 404
-    return jsonify({'headers': {'Referer': 'https://w1.anime4up.rest/'}, 'sources': [{'url': l['url'], 'quality': l['quality']} for l in data['download_links']], 'watch_servers': data['watch_servers']})
+    # Ensure the episode_id is correctly formatted for the URL
+    # If it doesn't start with the anime name, it might be a partial ID
+    episode_url = f"https://w1.anime4up.rest/episode/{episode_id}/"
+    
+    data = scraper.get_episode_data(episode_url)
+    if not data: 
+        return jsonify({
+            'error': 'Not found',
+            'attempted_url': episode_url,
+            'episode_id': episode_id
+        }), 404
+        
+    return jsonify({
+        'headers': {'Referer': 'https://w1.anime4up.rest/'}, 
+        'sources': [{'url': l['url'], 'quality': l['quality'], 'host': l['host']} for l in data['download_links']], 
+        'watch_servers': data['watch_servers']
+    })
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 3000)))
