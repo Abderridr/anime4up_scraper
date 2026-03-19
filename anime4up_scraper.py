@@ -9,7 +9,7 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 class Anime4upScraper:
     def __init__(self):
         self.base_url = "https://w1.anime4up.rest"
-        # ScraperAPI is still recommended for cloud providers like Railway
+        # Using the user's provided ScraperAPI key
         self.api_key = "70b7ccc8c48d7bf60ee80ab2ee12ff09" 
         self.headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"}
 
@@ -80,9 +80,9 @@ class Anime4upScraper:
         for li in soup.find_all('li'):
             text = li.text.strip()
             if ':' in text:
-                k, v = text.split(':', 1)
-                k = k.strip()
-                v = v.strip()
+                parts = text.split(':', 1)
+                k = parts[0].strip()
+                v = parts[1].strip()
                 if 'بداية العرض' in k: details['year'] = v
                 elif 'حالة الأنمي' in k: details['status'] = v
                 elif 'نوع الأنمي' in k: details['type'] = v
@@ -120,7 +120,8 @@ class Anime4upScraper:
             if any(d in href.lower() for d in ['mega.nz', 'mediafire', 'gofile', 'workupload', 'mp4upload']):
                 # Try to find quality in the same row or parent
                 quality = "Unknown"
-                parent_text = a.find_parent().text if a.find_parent() else ""
+                parent = a.find_parent()
+                parent_text = parent.text if parent else ""
                 if '1080' in parent_text or 'fhd' in parent_text: quality = "1080p"
                 elif '720' in parent_text or 'hd' in parent_text: quality = "720p"
                 elif '480' in parent_text or 'sd' in parent_text: quality = "480p"
@@ -132,10 +133,3 @@ class Anime4upScraper:
                 })
                 
         return data
-
-if __name__ == "__main__":
-    scraper = Anime4upScraper()
-    print("Testing Anime4up latest episodes...")
-    latest = scraper.get_latest_episodes()
-    for ep in latest[:5]:
-        print(f"- {ep['title']}: {ep['url']}")
