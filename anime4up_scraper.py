@@ -10,7 +10,7 @@ class Anime4upScraper:
     def __init__(self):
         self.base_url = "https://w1.anime4up.rest"
         # ScraperAPI is still recommended for cloud providers like Railway
-        self.api_key = "YOUR_SCRAPERAPI_KEY" 
+        self.api_key = "70b7ccc8c48d7bf60ee80ab2ee12ff09" 
         self.headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"}
 
     def _get_with_scraperapi(self, url, render=False):
